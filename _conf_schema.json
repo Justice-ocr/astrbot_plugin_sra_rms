@@ -1,77 +1,77 @@
 {
-    "sra_host": {
-        "description": "SRA Server 地址",
-        "type": "string",
-        "hint": "SRA前端Server的地址，默认 localhost",
-        "default": "localhost"
-    },
-    "sra_port": {
-        "description": "SRA Server 端口",
-        "type": "int",
-        "hint": "SRA前端Server的端口，默认 5073",
-        "default": 5073
-    },
-    "enable_whitelist": {
-        "description": "启用指令白名单",
-        "type": "bool",
-        "hint": "开启后仅白名单中的用户可使用 /sra 指令",
-        "default": false
-    },
-    "whitelist_users": {
-        "description": "指令白名单",
-        "type": "template_list",
-        "hint": "添加允许使用 /sra 指令的用户。为空且启用白名单时所有人不可用。",
-        "templates": {
-            "entry": {
-                "name": "白名单条目",
-                "display_item": "account_id",
-                "items": {
-                    "platform": {
-                        "description": "消息平台",
-                        "type": "string",
-                        "default": "aiocqhttp",
-                        "options": [
-                            "aiocqhttp",
-                            "qq_official",
-                            "qq_official_webhook",
-                            "telegram",
-                            "wecom",
-                            "lark",
-                            "dingtalk",
-                            "discord",
-                            "slack",
-                            "kook",
-                            "webchat"
-                        ],
-                        "labels": [
-                            "QQ (OneBot v11)",
-                            "QQ 官方",
-                            "QQ 官方 Webhook",
-                            "Telegram",
-                            "企业微信",
-                            "飞书",
-                            "钉钉",
-                            "Discord",
-                            "Slack",
-                            "KOOK",
-                            "WebChat"
-                        ]
-                    },
-                    "msg_type": {
-                        "description": "消息类型",
-                        "type": "string",
-                        "default": "all",
-                        "options": ["all", "group", "private"],
-                        "labels": ["全部", "群聊", "私聊"]
-                    },
-                    "account_id": {
-                        "description": "账号/群号",
-                        "type": "string",
-                        "default": "",
-                        "hint": "填写会话ID(session_id)或群号(group_id)"
-                    }
-                }
-            }
+  "sra_host": {
+    "description": "SRA Server 地址",
+    "type": "string",
+    "hint": "SRA前端Server的地址，默认 localhost",
+    "default": "localhost"
+  },
+  "sra_port": {
+    "description": "SRA Server 端口",
+    "type": "int",
+    "hint": "SRA前端Server的端口，默认 5000",
+    "default": 5000
+  },
+  "enable_whitelist": {
+    "description": "启用指令白名单",
+    "type": "bool",
+    "hint": "开启后仅白名单中的用户可使用 /sra 指令",
+    "default": false
+  },
+  "whitelist_users": {
+    "description": "指令白名单",
+    "type": "template_list",
+    "hint": "添加允许使用 /sra 指令的用户。为空且启用白名单时所有人不可用。",
+    "templates": {
+      "entry": {
+        "name": "白名单条目",
+        "display_item": "account_id",
+        "items": {
+          "platform": {
+            "description": "消息平台",
+            "type": "string",
+            "default": "aiocqhttp",
+            "options": [
+              "aiocqhttp",
+              "qq_official",
+              "qq_official_webhook",
+              "telegram",
+              "wecom",
+              "lark",
+              "dingtalk",
+              "discord",
+              "slack",
+              "kook",
+              "webchat"
+            ],
+            "labels": [
+              "QQ (OneBot v11)",
+              "QQ 官方",
+              "QQ 官方 Webhook",
+              "Telegram",
+              "企业微信",
+              "飞书",
+              "钉钉",
+              "Discord",
+              "Slack",
+              "KOOK",
+              "WebChat"
+            ]
+          },
+          "msg_type": {
+            "description": "消息类型",
+            "type": "string",
+            "default": "all",
+            "options": ["all", "group", "private"],
+            "labels": ["全部", "群聊", "私聊"]
+          },
+          "account_id": {
+            "description": "账号/群号",
+            "type": "string",
+            "default": "",
+            "hint": "填写会话ID(session_id)或群号(group_id)"
+          }
         }
+      }
     }
+  }
 }

@@ -110,20 +110,55 @@ class SRAPlugin(Star):
     def sra(self):
         """SRA 远程管理指令组"""
 
+    # === /sra help ===
+
+    @sra.command("help")
+    async def cmd_help(self, event: AstrMessageEvent):
+        """查看 SRA 指令大全。"""
+        if not self._check_whitelist(event):
+            return
+        lines = [
+            "==SRA-RMS指令大全==",
+            "/sra run [配置]",
+            " ↑ 启动任务,可传序号或配置名",
+            "   不传参数则缺省default",
+            "/sra run all",
+            " ↑ 启动全部任务",
+            "/sra stop",
+            " ↑ 停止当前任务",
+            "/sra status",
+            " ↑ 查看运行状态",
+            "/sra logs [数量]",
+            " ↑ 获取最近日志,默认100条",
+            "/sra configs",
+            " ↑ 查看已保存配置列表(带序号)",
+            "/sra activity [数量]",
+            " ↑ 查看本插件活动摘要,默认20条",
+            "/sra help",
+            " ↑ 显示本帮助",
+        ]
+        yield event.plain_result("\n".join(lines))
+
     # === /sra run ===
 
     @sra.command("run")
     async def cmd_run(self, event: AstrMessageEvent, config_name: str | None = None):
-        """运行 SRA 任务。不带参数加载默认配置 "default"。可传序号(需先 /sra configs 查看)或配置名。传空串运行全部。"""
+        """运行 SRA 任务。不带参数加载默认配置 "default"。可传序号或配置名。传 "all" 运行全部。"""
         if not self._check_whitelist(event):
             return
         client = await self._ensure_client(event)
         if client is None:
             return
 
-        # 序号匹配：如果传入的是纯数字，先拉取配置列表做序号映射
+        # 不带参数 → 加载默认配置 "default"
+        # 传 "all" → 运行全部已保存配置(空 body)
         resolved_name = config_name
-        if config_name and config_name.isdigit():
+        if config_name is None:
+            resolved_name = "default"
+        elif config_name == "all":
+            resolved_name = ""
+        elif config_name.isdigit():
+            # 序号匹配：拉取配置列表做序号映射
             cfg_result = await client.list_configs()
             configs = cfg_result.get("configs", [])
             if "error" in cfg_result:
