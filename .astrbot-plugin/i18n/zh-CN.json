@@ -1,0 +1,55 @@
+{
+  "metadata": {
+    "display_name": "SRA调度器",
+    "desc": "用于调用崩铁辅助工具SRA(受限于SRA server提供的接口)。远程执行任务、查看状态与日志。"
+  },
+  "config": {
+    "sra_host": {
+      "description": "SRA Server 地址",
+      "hint": "SRA前端Server的地址，默认 localhost"
+    },
+    "sra_port": {
+      "description": "SRA Server 端口",
+      "hint": "SRA前端Server的端口，默认 5073"
+    },
+    "enable_whitelist": {
+      "description": "启用指令白名单",
+      "hint": "开启后仅白名单中的用户可使用 /sra 指令"
+    },
+    "whitelist_users": {
+      "description": "指令白名单",
+      "hint": "添加允许使用 /sra 指令的用户。为空且启用白名单时所有人不可用。",
+      "templates": {
+        "entry": {
+          "name": "白名单条目",
+          "items": {
+            "platform": {
+              "description": "消息平台",
+              "labels": [
+                "QQ (OneBot v11)",
+                "QQ 官方",
+                "QQ 官方 Webhook",
+                "Telegram",
+                "企业微信",
+                "飞书",
+                "钉钉",
+                "Discord",
+                "Slack",
+                "KOOK",
+                "WebChat"
+              ]
+            },
+            "msg_type": {
+              "description": "消息类型",
+              "labels": ["全部", "群聊", "私聊"]
+            },
+            "account_id": {
+              "description": "账号/群号",
+              "hint": "填写会话ID(session_id)或群号(group_id)"
+            }
+          }
+        }
+      }
+    }
+  }
+}

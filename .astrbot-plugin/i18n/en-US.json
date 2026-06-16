@@ -1,0 +1,55 @@
+{
+    "metadata": {
+        "display_name": "SRA Scheduler",
+        "desc": "Remote manager for StarRailAssistant (SRA). Run tasks, check status and view logs via /sra commands."
+    },
+    "config": {
+        "sra_host": {
+            "description": "SRA Server Address",
+            "hint": "Address of SRA Frontend Server, default localhost"
+        },
+        "sra_port": {
+            "description": "SRA Server Port",
+            "hint": "Port of SRA Frontend Server, default 5073"
+        },
+        "enable_whitelist": {
+            "description": "Enable Command Whitelist",
+            "hint": "When enabled, only whitelisted users can use /sra commands"
+        },
+        "whitelist_users": {
+            "description": "Command Whitelist",
+            "hint": "Add users allowed to use /sra commands. If empty and whitelist is enabled, no one can use it.",
+            "templates": {
+                "entry": {
+                    "name": "Whitelist Entry",
+                    "items": {
+                        "platform": {
+                            "description": "Message Platform",
+                            "labels": [
+                                "QQ (OneBot v11)",
+                                "QQ Official",
+                                "QQ Official Webhook",
+                                "Telegram",
+                                "WeCom",
+                                "Lark",
+                                "DingTalk",
+                                "Discord",
+                                "Slack",
+                                "KOOK",
+                                "WebChat"
+                            ]
+                        },
+                        "msg_type": {
+                            "description": "Message Type",
+                            "labels": ["All", "Group", "Private"]
+                        },
+                        "account_id": {
+                            "description": "Account/Group ID",
+                            "hint": "Enter session_id or group_id"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
