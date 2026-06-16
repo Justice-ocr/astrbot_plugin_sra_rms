@@ -1,7 +1,7 @@
 {
   "metadata": {
     "display_name": "SRA调度器",
-    "desc": "用于调用崩铁辅助工具SRA(受限于SRA server提供的接口)。远程执行任务、查看状态与日志。"
+    "desc": "用于调用崩铁辅助工具SRA(受限于SRA server提供的接口)。远程执行任务、查看状态与日志。\n   ⭐本插件交流群:1098236107   ⭐SRA交流群:994571792"
   },
   "config": {
     "sra_host": {
@@ -10,7 +10,7 @@
     },
     "sra_port": {
       "description": "SRA Server 端口",
-      "hint": "SRA前端Server的端口，默认 5073"
+      "hint": "SRA前端Server的端口，默认 5000"
     },
     "enable_whitelist": {
       "description": "启用指令白名单",
@@ -26,6 +26,7 @@
             "platform": {
               "description": "消息平台",
               "labels": [
+                "全部",
                 "QQ (OneBot v11)",
                 "QQ 官方",
                 "QQ 官方 Webhook",
@@ -45,7 +46,7 @@
             },
             "account_id": {
               "description": "账号/群号",
-              "hint": "填写会话ID(session_id)或群号(group_id)"
+              "hint": "填写/sid指令输出的UMO末尾账号(如3786293235)或群号"
             }
           }
         }

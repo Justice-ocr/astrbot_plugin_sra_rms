@@ -1,7 +1,7 @@
 {
   "metadata": {
     "display_name": "SRA Scheduler",
-    "desc": "Remote manager for StarRailAssistant (SRA). Run tasks, check status and view logs via /sra commands."
+    "desc": "Remote manager for StarRailAssistant (SRA). Run tasks, check status and view logs via /sra commands.\n   ⭐Plugin Group:1098236107   ⭐SRA Group:994571792"
   },
   "config": {
     "sra_host": {
@@ -10,7 +10,7 @@
     },
     "sra_port": {
       "description": "SRA Server Port",
-      "hint": "Port of SRA Frontend Server, default 5073"
+      "hint": "Port of SRA Frontend Server, default 5000"
     },
     "enable_whitelist": {
       "description": "Enable Command Whitelist",
@@ -26,6 +26,7 @@
             "platform": {
               "description": "Message Platform",
               "labels": [
+                "All",
                 "QQ (OneBot v11)",
                 "QQ Official",
                 "QQ Official Webhook",
@@ -45,7 +46,7 @@
             },
             "account_id": {
               "description": "Account/Group ID",
-              "hint": "Enter session_id or group_id"
+              "hint": "Enter the account from /sid UMO (e.g. 3786293235) or group ID"
             }
           }
         }

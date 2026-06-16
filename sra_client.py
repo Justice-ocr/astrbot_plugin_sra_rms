@@ -19,7 +19,7 @@ from .activity_logger import ActivityLogger
 class SRAClient:
     """异步 HTTP 客户端，封装 SRA Server 的 TaskController 接口。"""
 
-    def __init__(self, host: str = "localhost", port: int = 5073, activity: Optional[ActivityLogger] = None):
+    def __init__(self, host: str = "localhost", port: int = 5000, activity: Optional[ActivityLogger] = None):
         self._base = f"http://{host}:{port}"
         self._activity = activity
 
@@ -30,6 +30,26 @@ class SRAClient:
         """统一记录原子行为，仅在此层记录一次，避免与 main.py 重复。"""
         if self._activity:
             self._activity.log(category, desc, result, elapsed, detail)
+
+    @staticmethod
+    def _parse_json(resp: httpx.Response) -> tuple[Optional[object], Optional[str]]:
+        """解析响应 JSON，处理非 JSON 响应和错误状态码。
+
+        Returns:
+            (parsed_data, error_msg)。成功时 error_msg 为 None。
+        """
+        # 检查 HTTP 状态码
+        if resp.status_code >= 400:
+            return None, f"HTTP {resp.status_code}: {resp.text[:200]}"
+        # 检查空响应
+        text = resp.text.strip()
+        if not text:
+            return None, "SRA服务器返回空响应"
+        # 尝试解析 JSON
+        try:
+            return resp.json(), None
+        except Exception as e:
+            return None, f"响应解析失败({e}): {text[:200]}"
 
     async def run_task(self, config_name: Optional[str] = "default") -> dict:
         """运行 SRA 任务。
@@ -54,14 +74,18 @@ class SRAClient:
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.post(url, json=body)
-                data = resp.json()
+                data, err = self._parse_json(resp)
         except Exception as e:
             elapsed = (time.perf_counter() - t0) * 1000
             self._log_activity("sra_api", f"POST /Task/run config={config_name or 'all'}", "fail", elapsed, str(e))
             return {"success": False, "message": f"请求失败: {e}"}
 
         elapsed = (time.perf_counter() - t0) * 1000
-        ok = bool(data.get("success"))
+        if err:
+            self._log_activity("sra_api", f"POST /Task/run config={config_name or 'all'}", "fail", elapsed, err)
+            return {"success": False, "message": err}
+        data = data or {}
+        ok = bool(data.get("success")) if isinstance(data, dict) else False
         self._log_activity(
             "sra_api",
             f"POST /Task/run config={config_name or 'all'}",
@@ -78,14 +102,18 @@ class SRAClient:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.post(url)
-                data = resp.json()
+                data, err = self._parse_json(resp)
         except Exception as e:
             elapsed = (time.perf_counter() - t0) * 1000
             self._log_activity("sra_api", "POST /Task/stop", "fail", elapsed, str(e))
             return {"success": False, "message": f"请求失败: {e}"}
 
         elapsed = (time.perf_counter() - t0) * 1000
-        ok = bool(data.get("success"))
+        if err:
+            self._log_activity("sra_api", "POST /Task/stop", "fail", elapsed, err)
+            return {"success": False, "message": err}
+        data = data or {}
+        ok = bool(data.get("success")) if isinstance(data, dict) else False
         self._log_activity("sra_api", "POST /Task/stop", "ok" if ok else "fail", elapsed, f"HTTP {resp.status_code}")
         return data
 
@@ -104,11 +132,16 @@ class SRAClient:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(url)
-                raw = resp.json()
+                raw, err = self._parse_json(resp)
         except Exception as e:
             elapsed = (time.perf_counter() - t0) * 1000
             self._log_activity("sra_api", "GET /Task/status", "fail", elapsed, str(e))
             return {"running": False, "error": str(e)}
+
+        elapsed = (time.perf_counter() - t0) * 1000
+        if err:
+            self._log_activity("sra_api", "GET /Task/status", "fail", elapsed, err)
+            return {"running": False, "error": err}
 
         # 兼容纯 bool 与 {"running": bool} 两种格式
         if isinstance(raw, bool):
@@ -118,7 +151,6 @@ class SRAClient:
         else:
             running = False
 
-        elapsed = (time.perf_counter() - t0) * 1000
         self._log_activity("sra_api", "GET /Task/status", "ok", elapsed, f"HTTP {resp.status_code}")
         return {"running": running}
 
@@ -140,11 +172,16 @@ class SRAClient:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(url)
-                raw = resp.json()
+                raw, err = self._parse_json(resp)
         except Exception as e:
             elapsed = (time.perf_counter() - t0) * 1000
             self._log_activity("sra_api", f"GET /Task/logs count={count}", "fail", elapsed, str(e))
             return {"logs": [], "error": str(e)}
+
+        elapsed = (time.perf_counter() - t0) * 1000
+        if err:
+            self._log_activity("sra_api", f"GET /Task/logs count={count}", "fail", elapsed, err)
+            return {"logs": [], "error": err}
 
         # 兼容纯 list 与 {"logs": [...]} 两种格式
         if isinstance(raw, list):
@@ -156,7 +193,6 @@ class SRAClient:
         else:
             logs = []
 
-        elapsed = (time.perf_counter() - t0) * 1000
         self._log_activity("sra_api", f"GET /Task/logs count={count}", "ok", elapsed, f"返回 {len(logs)} 条")
         return {"logs": logs}
 
@@ -175,11 +211,16 @@ class SRAClient:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(url)
-                raw = resp.json()
+                raw, err = self._parse_json(resp)
         except Exception as e:
             elapsed = (time.perf_counter() - t0) * 1000
             self._log_activity("sra_api", "GET /Configs", "fail", elapsed, str(e))
             return {"configs": [], "error": str(e)}
+
+        elapsed = (time.perf_counter() - t0) * 1000
+        if err:
+            self._log_activity("sra_api", "GET /Configs", "fail", elapsed, err)
+            return {"configs": [], "error": err}
 
         # 兼容纯 list 与 {"configs": [...]} 两种格式
         if isinstance(raw, list):
@@ -191,6 +232,5 @@ class SRAClient:
         else:
             configs = []
 
-        elapsed = (time.perf_counter() - t0) * 1000
         self._log_activity("sra_api", "GET /Configs", "ok", elapsed, f"返回 {len(configs)} 个")
         return {"configs": configs}

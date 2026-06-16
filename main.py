@@ -18,11 +18,11 @@ PLUGIN_NAME = "astrbot_plugin_sra_rms"
 SUPPORT_INFO = (
     "\n\n如需帮助，欢迎加群交流：\n"
     "• 本插件交流群: 1098236107 (QQ, 入群口令: sra插件)\n"
-    "• SRA 交流群: 994571792 (QQ)"
+    "• SRA 交流群: 994571792 (QQ)\n"
 )
 
 
-@register(PLUGIN_NAME, "MiaoR1Zibing", "用于调用崩铁辅助工具SRA(受限于SRA server提供的接口)。远程执行任务、查看状态与日志。", "v0.3.0", "https://github.com/MiaoR1Zibing/astrbot_plugin_sra_rms")
+@register(PLUGIN_NAME, "MiaoR1Zibing", "用于调用崩铁辅助工具SRA(受限于SRA server提供的接口)。远程执行任务、查看状态与日志。\n   ⭐本插件交流群:1098236107   ⭐SRA交流群:994571792", "v0.4.0", "https://github.com/MiaoR1Zibing/astrbot_plugin_sra_rms")
 class SRAPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -34,14 +34,14 @@ class SRAPlugin(Star):
 
     async def initialize(self):
         """插件初始化：建立活动日志和 SRA HTTP 客户端。"""
-        data_dir = get_astrbot_data_path() / "plugin_data" / PLUGIN_NAME
+        data_dir = Path(get_astrbot_data_path()) / "plugin_data" / PLUGIN_NAME
         data_dir.mkdir(parents=True, exist_ok=True)
 
         self._activity = ActivityLogger(data_dir, PLUGIN_NAME)
         self._activity.log("lifecycle", "插件初始化", "ok")
 
         host = self.config.get("sra_host", "localhost")
-        port = self.config.get("sra_port", 5073)
+        port = self.config.get("sra_port", 5000)
         self._client = SRAClient(host=host, port=port, activity=self._activity)
 
         wl_on = self.config.get("enable_whitelist", False)
@@ -60,9 +60,14 @@ class SRAPlugin(Star):
         """检查当前事件是否通过白名单。
 
         白名单条目结构: {platform, msg_type, account_id}
-        - platform: 匹配事件平台，"all" 视为通配
+        - platform: 匹配平台类型名(如 aiocqhttp)，"all" 视为通配
         - msg_type: all/group/private
-        - account_id: 匹配 session_id 或 group_id
+        - account_id: 匹配 UMO 末尾的会话ID(账号/群号)
+
+        判断策略: 优先用 event 方法获取信息,UMO 作为辅助
+        - 平台: event.get_platform_name() → 平台类型名(如 aiocqhttp)
+        - 消息类型: event.get_message_type() → MessageType 枚举
+        - 会话ID: UMO 末尾段
         """
         if not self.config.get("enable_whitelist", False):
             return True
@@ -71,38 +76,43 @@ class SRAPlugin(Star):
         if not whitelist:
             return False
 
-        # 获取事件信息
-        platform = getattr(event.message_obj, "platform_id", "") or ""
-        session_id = event.session_id or ""
-        group_id = getattr(event, "group_id", "") or ""
-        is_group = bool(group_id)
+        # 优先用方法获取
+        platform_name = event.get_platform_name() or ""
+        msg_type = event.get_message_type() or ""
+        is_group = msg_type.value == "GroupMessage"
+
+        # UMO 仅用于提取会话ID(末尾段)
+        umo = event.unified_msg_origin or ""
+        parts = umo.split(":", 2)
+        umo_account = parts[2] if len(parts) == 3 else umo
 
         for entry in whitelist:
-            e_platform = entry.get("platform", "")
+            e_platform = entry.get("platform", "all")
             e_msg_type = entry.get("msg_type", "all")
             e_account = str(entry.get("account_id", "")).strip()
 
-            # 平台匹配
-            if e_platform and e_platform != "all" and e_platform != platform:
+            # 平台匹配: 用 get_platform_name() 取平台类型名
+            if e_platform and e_platform != "all" and e_platform != platform_name:
                 continue
             # 消息类型匹配
-            if e_msg_type == "group" and not is_group:
+            if e_msg_type == "all":
+                pass
+            elif e_msg_type == "group" and not is_group:
                 continue
-            if e_msg_type == "private" and is_group:
+            elif e_msg_type == "private" and is_group:
                 continue
-            # 账号匹配：session_id 或 group_id 任一命中即可
+            # 账号匹配：UMO 会话ID 命中即可
             if not e_account:
                 continue
-            if e_account == session_id or e_account == group_id:
+            if e_account == umo_account:
                 return True
         return False
 
     async def _ensure_client(self, event: AstrMessageEvent):
-        """确保适配器已初始化，否则返回错误消息。"""
+        """确保适配器已初始化，返回 (client, error_msg)。client 为 None 时 error_msg 不为空。"""
         if self._client is None:
-            yield event.plain_result("❌SRA适配器尚未初始化,请检查插件配置。" + SUPPORT_INFO)
-            return None
-        return self._client
+            return None, "❌SRA适配器尚未初始化,请检查插件配置。" + SUPPORT_INFO
+        return self._client, None
 
     # -- 指令组 ----------------------------------------------------------------
 
@@ -121,7 +131,7 @@ class SRAPlugin(Star):
             "==SRA-RMS指令大全==",
             "/sra run [配置]",
             " ↑ 启动任务,可传序号或配置名",
-            "   不传参数则缺省default",
+            "    不传参数则缺省default",
             "/sra run all",
             " ↑ 启动全部任务",
             "/sra stop",
@@ -133,7 +143,7 @@ class SRAPlugin(Star):
             "/sra configs",
             " ↑ 查看已保存配置列表(带序号)",
             "/sra activity [数量]",
-            " ↑ 查看本插件活动摘要,默认20条",
+            " ↑ 查看行为日志,默认20条",
             "/sra help",
             " ↑ 显示本帮助",
         ]
@@ -146,8 +156,9 @@ class SRAPlugin(Star):
         """运行 SRA 任务。不带参数加载默认配置 "default"。可传序号或配置名。传 "all" 运行全部。"""
         if not self._check_whitelist(event):
             return
-        client = await self._ensure_client(event)
+        client, err = await self._ensure_client(event)
         if client is None:
+            yield event.plain_result(err)
             return
 
         # 不带参数 → 加载默认配置 "default"
@@ -187,8 +198,9 @@ class SRAPlugin(Star):
         """停止当前运行中的 SRA 任务。"""
         if not self._check_whitelist(event):
             return
-        client = await self._ensure_client(event)
+        client, err = await self._ensure_client(event)
         if client is None:
+            yield event.plain_result(err)
             return
 
         try:
@@ -208,8 +220,9 @@ class SRAPlugin(Star):
         """查看 SRA 任务运行状态。"""
         if not self._check_whitelist(event):
             return
-        client = await self._ensure_client(event)
+        client, err = await self._ensure_client(event)
         if client is None:
+            yield event.plain_result(err)
             return
 
         try:
@@ -232,8 +245,9 @@ class SRAPlugin(Star):
         """获取 SRA Server 最近日志。可指定数量，默认 100 条。用法: /sra logs [数量]"""
         if not self._check_whitelist(event):
             return
-        client = await self._ensure_client(event)
+        client, err = await self._ensure_client(event)
         if client is None:
+            yield event.plain_result(err)
             return
 
         try:
@@ -277,8 +291,9 @@ class SRAPlugin(Star):
         """查看 SRA Server 上所有已保存配置列表（带序号）。"""
         if not self._check_whitelist(event):
             return
-        client = await self._ensure_client(event)
+        client, err = await self._ensure_client(event)
         if client is None:
+            yield event.plain_result(err)
             return
 
         try:

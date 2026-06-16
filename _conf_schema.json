@@ -29,8 +29,9 @@
           "platform": {
             "description": "消息平台",
             "type": "string",
-            "default": "aiocqhttp",
+            "default": "all",
             "options": [
+              "all",
               "aiocqhttp",
               "qq_official",
               "qq_official_webhook",
@@ -44,6 +45,7 @@
               "webchat"
             ],
             "labels": [
+              "全部",
               "QQ (OneBot v11)",
               "QQ 官方",
               "QQ 官方 Webhook",
@@ -68,7 +70,7 @@
             "description": "账号/群号",
             "type": "string",
             "default": "",
-            "hint": "填写会话ID(session_id)或群号(group_id)"
+            "hint": "填写/sid指令输出的UMO末尾账号(如3786293235)或群号"
           }
         }
       }
