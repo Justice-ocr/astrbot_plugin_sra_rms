@@ -1,24 +1,266 @@
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
-from astrbot.api.star import Context, Star, register
-from astrbot.api import logger
+"""AstrBot 插件 - SRA 调度器 (StarRailAssistant Remote Manager)
 
-@register("helloworld", "YourName", "一个简单的 Hello World 插件", "1.0.0")
-class MyPlugin(Star):
-    def __init__(self, context: Context):
+通过 `/sra` 指令组远程管理崩铁辅助工具 SRA, 调用 SRAFrontend.Server HTTP API。
+"""
+from pathlib import Path
+
+from astrbot.api import AstrBotConfig, logger
+from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.star import Context, Star, register
+from astrbot.core.utils.astrbot_path import get_astrbot_data_path
+
+from .activity_logger import ActivityLogger
+from .sra_client import SRAClient
+
+PLUGIN_NAME = "astrbot_plugin_sra_rms"
+
+# 交流群信息
+SUPPORT_INFO = (
+    "\n\n如需帮助，欢迎加群交流：\n"
+    "• 本插件交流群: 1098236107 (QQ, 入群口令: sra插件)\n"
+    "• SRA 交流群: 994571792 (QQ)"
+)
+
+
+@register(PLUGIN_NAME, "MiaoR1Zibing", "用于调用崩铁辅助工具SRA(受限于SRA server提供的接口)。远程执行任务、查看状态与日志。", "v0.3.0", "https://github.com/MiaoR1Zibing/astrbot_plugin_sra_rms")
+class SRAPlugin(Star):
+    def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
+        self.config = config
+        self._client: SRAClient | None = None
+        self._activity: ActivityLogger | None = None
+
+    # -- 生命周期 ----------------------------------------------------------------
 
     async def initialize(self):
-        """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
+        """插件初始化：建立活动日志和 SRA HTTP 客户端。"""
+        data_dir = get_astrbot_data_path() / "plugin_data" / PLUGIN_NAME
+        data_dir.mkdir(parents=True, exist_ok=True)
 
-    # 注册指令的装饰器。指令名为 helloworld。注册成功后，发送 `/helloworld` 就会触发这个指令，并回复 `你好, {user_name}!`
-    @filter.command("helloworld")
-    async def helloworld(self, event: AstrMessageEvent):
-        """这是一个 hello world 指令""" # 这是 handler 的描述，将会被解析方便用户了解插件内容。建议填写。
-        user_name = event.get_sender_name()
-        message_str = event.message_str # 用户发的纯文本消息字符串
-        message_chain = event.get_messages() # 用户所发的消息的消息链 # from astrbot.api.message_components import *
-        logger.info(message_chain)
-        yield event.plain_result(f"Hello, {user_name}, 你发了 {message_str}!") # 发送一条纯文本消息
+        self._activity = ActivityLogger(data_dir, PLUGIN_NAME)
+        self._activity.log("lifecycle", "插件初始化", "ok")
+
+        host = self.config.get("sra_host", "localhost")
+        port = self.config.get("sra_port", 5073)
+        self._client = SRAClient(host=host, port=port, activity=self._activity)
+
+        wl_on = self.config.get("enable_whitelist", False)
+        wl_count = len(self.config.get("whitelist_users", []) or [])
+        logger.info(f"[SRA] 插件已初始化, SRA Server = http://{host}:{port}, 白名单={'on' if wl_on else 'off'}({wl_count})")
 
     async def terminate(self):
-        """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""
+        """插件卸载时记录退出日志。"""
+        if self._activity:
+            self._activity.log("lifecycle", "插件卸载", "ok")
+        logger.info("[SRA] 插件已卸载")
+
+    # -- 辅助方法 ----------------------------------------------------------------
+
+    def _check_whitelist(self, event: AstrMessageEvent) -> bool:
+        """检查当前事件是否通过白名单。
+
+        白名单条目结构: {platform, msg_type, account_id}
+        - platform: 匹配事件平台，"all" 视为通配
+        - msg_type: all/group/private
+        - account_id: 匹配 session_id 或 group_id
+        """
+        if not self.config.get("enable_whitelist", False):
+            return True
+
+        whitelist = self.config.get("whitelist_users", []) or []
+        if not whitelist:
+            return False
+
+        # 获取事件信息
+        platform = getattr(event.message_obj, "platform_id", "") or ""
+        session_id = event.session_id or ""
+        group_id = getattr(event, "group_id", "") or ""
+        is_group = bool(group_id)
+
+        for entry in whitelist:
+            e_platform = entry.get("platform", "")
+            e_msg_type = entry.get("msg_type", "all")
+            e_account = str(entry.get("account_id", "")).strip()
+
+            # 平台匹配
+            if e_platform and e_platform != "all" and e_platform != platform:
+                continue
+            # 消息类型匹配
+            if e_msg_type == "group" and not is_group:
+                continue
+            if e_msg_type == "private" and is_group:
+                continue
+            # 账号匹配：session_id 或 group_id 任一命中即可
+            if not e_account:
+                continue
+            if e_account == session_id or e_account == group_id:
+                return True
+        return False
+
+    async def _ensure_client(self, event: AstrMessageEvent):
+        """确保适配器已初始化，否则返回错误消息。"""
+        if self._client is None:
+            yield event.plain_result("❌SRA适配器尚未初始化,请检查插件配置。" + SUPPORT_INFO)
+            return None
+        return self._client
+
+    # -- 指令组 ----------------------------------------------------------------
+
+    @filter.command_group("sra")
+    def sra(self):
+        """SRA 远程管理指令组"""
+
+    # === /sra run ===
+
+    @sra.command("run")
+    async def cmd_run(self, event: AstrMessageEvent, config_name: str | None = None):
+        """运行 SRA 任务。不带参数加载默认配置 "default"。可传序号(需先 /sra configs 查看)或配置名。传空串运行全部。"""
+        if not self._check_whitelist(event):
+            return
+        client = await self._ensure_client(event)
+        if client is None:
+            return
+
+        # 序号匹配：如果传入的是纯数字，先拉取配置列表做序号映射
+        resolved_name = config_name
+        if config_name and config_name.isdigit():
+            cfg_result = await client.list_configs()
+            configs = cfg_result.get("configs", [])
+            if "error" in cfg_result:
+                yield event.plain_result(f"❌无法获取配置列表:{cfg_result['error']}" + SUPPORT_INFO)
+                return
+            idx = int(config_name)
+            if idx < 1 or idx > len(configs):
+                yield event.plain_result(f"❌序号超出范围,共{len(configs)}个配置,请用/sra configs查看。")
+                return
+            resolved_name = configs[idx - 1]
+
+        try:
+            result = await client.run_task(resolved_name)
+        except Exception as e:
+            yield event.plain_result(f"❌运行失败:{e}" + SUPPORT_INFO)
+            return
+        if result.get("success"):
+            yield event.plain_result("✅任务已启动")
+        else:
+            yield event.plain_result(f"❌运行失败:{result.get('message', '未知错误')}")
+
+    # === /sra stop ===
+
+    @sra.command("stop")
+    async def cmd_stop(self, event: AstrMessageEvent):
+        """停止当前运行中的 SRA 任务。"""
+        if not self._check_whitelist(event):
+            return
+        client = await self._ensure_client(event)
+        if client is None:
+            return
+
+        try:
+            result = await client.stop_task()
+        except Exception as e:
+            yield event.plain_result(f"❌停止失败:{e}" + SUPPORT_INFO)
+            return
+        if result.get("success"):
+            yield event.plain_result("✅已发送停止信号")
+        else:
+            yield event.plain_result(f"⚠️{result.get('message', '未知错误')}")
+
+    # === /sra status ===
+
+    @sra.command("status")
+    async def cmd_status(self, event: AstrMessageEvent):
+        """查看 SRA 任务运行状态。"""
+        if not self._check_whitelist(event):
+            return
+        client = await self._ensure_client(event)
+        if client is None:
+            return
+
+        try:
+            result = await client.get_status()
+        except Exception as e:
+            yield event.plain_result(f"❌无法获取状态:{e}" + SUPPORT_INFO)
+            return
+        running = result.get("running", False)
+        if "error" in result:
+            yield event.plain_result(f"❌无法获取状态:{result['error']}" + SUPPORT_INFO)
+        elif running:
+            yield event.plain_result("🟢SRA任务运行中")
+        else:
+            yield event.plain_result("⚪SRA当前无运行中的任务")
+
+    # === /sra logs ===
+
+    @sra.command("logs")
+    async def cmd_logs(self, event: AstrMessageEvent, count: int = 100):
+        """获取 SRA Server 最近日志。可指定数量，默认 100 条。用法: /sra logs [数量]"""
+        if not self._check_whitelist(event):
+            return
+        client = await self._ensure_client(event)
+        if client is None:
+            return
+
+        try:
+            result = await client.get_logs(count)
+        except Exception as e:
+            yield event.plain_result(f"❌获取日志失败:{e}" + SUPPORT_INFO)
+            return
+        raw_logs = result.get("logs", [])
+        if "error" in result and not raw_logs:
+            yield event.plain_result(f"❌获取日志失败:{result['error']}" + SUPPORT_INFO)
+            return
+
+        if not raw_logs:
+            yield event.plain_result("📭SRA服务器暂无日志。")
+            return
+
+        # 截取不超过 15 条，避免消息过长
+        display = raw_logs[-15:]
+        header = f"📋SRA最近日志(共{len(raw_logs)}条):\n"
+        body = "\n".join(f"  {line}" for line in display)
+        yield event.plain_result(header + body)
+
+    # === /sra activity ===
+
+    @sra.command("activity")
+    async def cmd_activity(self, event: AstrMessageEvent, count: int = 20):
+        """查看本插件的活动摘要。可指定条数，默认 20 条。用法: /sra activity [数量]"""
+        if not self._check_whitelist(event):
+            return
+        if self._activity is None:
+            yield event.plain_result("❌活动日志尚未初始化。" + SUPPORT_INFO)
+            return
+
+        summary = self._activity.get_summary(count)
+        yield event.plain_result(summary)
+
+    # === /sra configs ===
+
+    @sra.command("configs")
+    async def cmd_configs(self, event: AstrMessageEvent):
+        """查看 SRA Server 上所有已保存配置列表（带序号）。"""
+        if not self._check_whitelist(event):
+            return
+        client = await self._ensure_client(event)
+        if client is None:
+            return
+
+        try:
+            result = await client.list_configs()
+        except Exception as e:
+            yield event.plain_result(f"❌获取配置列表失败:{e}" + SUPPORT_INFO)
+            return
+        configs = result.get("configs", [])
+        if "error" in result:
+            yield event.plain_result(f"❌获取配置列表失败:{result['error']}" + SUPPORT_INFO)
+            return
+
+        if not configs:
+            yield event.plain_result("📭SRA服务器暂无已保存配置。")
+            return
+
+        lines = [f"SRA已保存配置(共{len(configs)}个):"]
+        for i, name in enumerate(configs, 1):
+            lines.append(f"  {i}.{name}")
+        yield event.plain_result("\n".join(lines))
