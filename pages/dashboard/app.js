@@ -5,7 +5,11 @@ const statusPill = document.getElementById("statusPill");
 const configSelect = document.getElementById("configSelect");
 const configName = document.getElementById("configName");
 const configEditor = document.getElementById("configEditor");
+const serverReachable = document.getElementById("serverReachable");
+const localProcess = document.getElementById("localProcess");
+const serverPath = document.getElementById("serverPath");
 const taskResult = document.getElementById("taskResult");
+const serverResult = document.getElementById("serverResult");
 const configResult = document.getElementById("configResult");
 const logsOutput = document.getElementById("logsOutput");
 const logCount = document.getElementById("logCount");
@@ -40,6 +44,38 @@ async function refreshStatus() {
   }
   statusPill.textContent = payload.running ? "运行中" : "空闲";
   statusPill.dataset.state = payload.running ? "running" : "idle";
+}
+
+function renderServerStatus(payload) {
+  const reachable = payload.server_reachable;
+  serverReachable.textContent = reachable === true ? "可连接" : reachable === false ? "不可连接" : "未知";
+  serverReachable.dataset.state = reachable === true ? "running" : reachable === false ? "error" : "idle";
+
+  if (payload.process_running) {
+    localProcess.textContent = payload.pid ? `运行中 (${payload.pid})` : "运行中";
+    localProcess.dataset.state = "running";
+  } else {
+    localProcess.textContent = payload.started_by_plugin ? "已退出" : "未运行";
+    localProcess.dataset.state = "idle";
+  }
+
+  serverPath.textContent = payload.executable_path || "未配置";
+  serverPath.title = payload.executable_path || "";
+}
+
+async function refreshServerStatus() {
+  const payload = await bridge.apiGet("server-status");
+  renderServerStatus(payload);
+  if (payload.server_error) {
+    printResult(serverResult, payload);
+  }
+}
+
+async function startServer() {
+  const payload = await bridge.apiPost("start-server", {});
+  renderServerStatus(payload);
+  printResult(serverResult, payload);
+  await refreshStatus();
 }
 
 async function refreshConfigs() {
@@ -132,8 +168,17 @@ async function refreshLogs() {
 
 function bindActions() {
   document.getElementById("refreshStatusBtn").addEventListener("click", refreshStatus);
+  document.getElementById("refreshServerBtn").addEventListener("click", refreshServerStatus);
   document.getElementById("refreshLogsBtn").addEventListener("click", refreshLogs);
   document.getElementById("reloadConfigBtn").addEventListener("click", () => loadConfig());
+  document.getElementById("startServerBtn").addEventListener("click", async (event) => {
+    setBusy(event.currentTarget, true);
+    try {
+      await startServer();
+    } finally {
+      setBusy(event.currentTarget, false);
+    }
+  });
   document.getElementById("saveConfigBtn").addEventListener("click", async (event) => {
     setBusy(event.currentTarget, true);
     try {
@@ -157,7 +202,7 @@ async function boot() {
   await bridge.ready();
   bindActions();
   await loadInfo();
-  await Promise.allSettled([refreshStatus(), refreshConfigs(), refreshLogs()]);
+  await Promise.allSettled([refreshStatus(), refreshServerStatus(), refreshConfigs(), refreshLogs()]);
 }
 
 boot().catch((error) => {

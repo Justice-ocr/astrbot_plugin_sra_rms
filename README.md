@@ -14,6 +14,7 @@ AstrBot 插件，用于远程管理崩坏：星穹铁道辅助工具 [SRA (StarR
 - 日志查看：获取 SRA 服务器最近日志
 - 配置列表：查看 SRA 已保存配置，支持序号运行
 - Pages 管理页：在 AstrBot WebUI 中查看状态、启动 / 停止任务、查看日志、读取并保存 SRA 配置
+- 本机启动：可通过配置好的 `.exe` 路径启动 SRA Server，并查看连通性
 - 活动记录：插件所有原子行为自动记录，可查看摘要
 - 指令白名单：按平台 / 消息类型 / 账号限制使用权限
 - 多语言：WebUI 配置项支持中英文
@@ -39,6 +40,10 @@ git clone https://github.com/MiaoR1Zibing/astrbot_plugin_sra_rms.git
 | --------------- | ----------------------------------------- | --------- |
 | SRA Server 地址 | 填SRA中你设置的地址(不带:1234之类的)      | localhost |
 | SRA Server 端口 | 填SRA中你设置的端口(在这里填冒号后的数字) | 5073      |
+| SRA 可执行文件路径 | 用于启动本机 SRA 的 `.exe` 路径，留空则禁用启动功能 | 空 |
+| SRA 工作目录 | 启动 SRA 时使用的工作目录，留空则使用 `.exe` 所在目录 | 空 |
+| 启动等待秒数 | 启动后等待 HTTP Server 可连接的最长秒数 | 8 |
+| 插件初始化时自动启动 SRA | 插件初始化时自动尝试启动配置好的 SRA | false |
 | 启用指令白名单  | 开启后仅白名单用户可用                    | false     |
 | 指令白名单      | 平台 / 消息类型 / 账号 三维匹配(平台选all通配)   | 空        |
 
@@ -52,6 +57,8 @@ git clone https://github.com/MiaoR1Zibing/astrbot_plugin_sra_rms.git
 | `/sra run [配置]`      | 运行任务。不带参数加载默认配置 "default"；传序号需先查看 configs；传 all 运行全部 | `/sra run` `/sra run 2` `/sra run farm` `/sra run all` |
 | `/sra stop`            | 停止当前运行中的任务                                                              | `/sra stop`                                            |
 | `/sra status`          | 查看任务运行状态                                                                  | `/sra status`                                          |
+| `/sra start-server`    | 启动插件配置中填写的本机 SRA 可执行文件                                           | `/sra start-server`                                    |
+| `/sra server-status`   | 查看 SRA HTTP 连通性和插件启动的本机进程状态                                      | `/sra server-status`                                   |
 | `/sra logs [数量]`     | 获取 SRA 最近日志，默认 100 条                                                    | `/sra logs` `/sra logs 50`                             |
 | `/sra configs`         | 查看 SRA 已保存配置列表（带序号）                                                 | `/sra configs`                                         |
 | `/sra activity [数量]` | 查看本插件活动摘要，默认 20 条                                                    | `/sra activity`                                        |

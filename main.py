@@ -2,6 +2,7 @@
 
 通过 `/sra` 指令组远程管理崩铁辅助工具 SRA, 调用 SRAFrontend.Server HTTP API。
 """
+import asyncio
 from pathlib import Path
 
 from astrbot.api import AstrBotConfig, logger
@@ -12,6 +13,7 @@ from quart import jsonify, request
 
 from .activity_logger import ActivityLogger
 from .sra_client import SRAClient
+from .sra_process import SRAProcessManager
 
 PLUGIN_NAME = "astrbot_plugin_sra_rms"
 
@@ -23,17 +25,20 @@ SUPPORT_INFO = (
 )
 
 
-@register(PLUGIN_NAME, "MiaoR1Zibing", "用于调用崩铁辅助工具SRA(受限于SRA server提供的接口)。远程执行任务、查看状态与日志。\n   ⭐本插件交流群:1098236107   ⭐SRA交流群:994571792", "v0.4.0", "https://github.com/MiaoR1Zibing/astrbot_plugin_sra_rms")
+@register(PLUGIN_NAME, "MiaoR1Zibing", "用于调用崩铁辅助工具SRA(受限于SRA server提供的接口)。远程执行任务、查看状态与日志。\n   ⭐本插件交流群:1098236107   ⭐SRA交流群:994571792", "v0.5.0", "https://github.com/MiaoR1Zibing/astrbot_plugin_sra_rms")
 class SRAPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
         self._client: SRAClient | None = None
         self._activity: ActivityLogger | None = None
+        self._process_manager: SRAProcessManager | None = None
         context.register_web_api(f"/{PLUGIN_NAME}/info", self.page_info, ["GET"], "SRA RMS info")
         context.register_web_api(f"/{PLUGIN_NAME}/status", self.page_status, ["GET"], "SRA task status")
         context.register_web_api(f"/{PLUGIN_NAME}/run", self.page_run, ["POST"], "Run SRA task")
         context.register_web_api(f"/{PLUGIN_NAME}/stop", self.page_stop, ["POST"], "Stop SRA task")
+        context.register_web_api(f"/{PLUGIN_NAME}/server-status", self.page_server_status, ["GET"], "SRA server status")
+        context.register_web_api(f"/{PLUGIN_NAME}/start-server", self.page_start_server, ["POST"], "Start local SRA server")
         context.register_web_api(f"/{PLUGIN_NAME}/logs", self.page_logs, ["GET"], "SRA recent logs")
         context.register_web_api(f"/{PLUGIN_NAME}/configs", self.page_configs, ["GET"], "List SRA configs")
         context.register_web_api(f"/{PLUGIN_NAME}/config", self.page_get_config, ["GET"], "Get SRA config")
@@ -52,10 +57,21 @@ class SRAPlugin(Star):
         host = self.config.get("sra_host", "localhost")
         port = self.config.get("sra_port", 5073)
         self._client = SRAClient(host=host, port=port, activity=self._activity)
+        self._process_manager = SRAProcessManager(
+            executable_path=self.config.get("sra_executable_path", ""),
+            working_directory=self.config.get("sra_working_directory", ""),
+            activity=self._activity,
+        )
 
         wl_on = self.config.get("enable_whitelist", False)
         wl_count = len(self.config.get("whitelist_users", []) or [])
         logger.info(f"[SRA] 插件已初始化, SRA Server = http://{host}:{port}, 白名单={'on' if wl_on else 'off'}({wl_count})")
+
+        if self.config.get("auto_start_server", False):
+            start_result = self._process_manager.start()
+            if start_result.get("success"):
+                await self._wait_server_ready()
+            logger.info(f"[SRA] 自动启动 SRA Server: {start_result.get('message')}")
 
     async def terminate(self):
         """插件卸载时记录退出日志。"""
@@ -123,16 +139,43 @@ class SRAPlugin(Star):
             return None, "❌SRA适配器尚未初始化,请检查插件配置。" + SUPPORT_INFO
         return self._client, None
 
+    def _ensure_process_manager(self):
+        """确保本地进程管理器已初始化，返回 (manager, error_msg)。"""
+        if self._process_manager is None:
+            return None, "SRA 进程管理器尚未初始化，请检查插件配置。"
+        return self._process_manager, None
+
+    async def _wait_server_ready(self) -> bool:
+        """启动进程后等待 SRA HTTP Server 可连接。"""
+        if self._client is None:
+            return False
+        raw_timeout = self.config.get("start_timeout", 8)
+        try:
+            timeout = max(0, min(int(raw_timeout), 60))
+        except (TypeError, ValueError):
+            timeout = 8
+        deadline = asyncio.get_running_loop().time() + timeout
+        while asyncio.get_running_loop().time() <= deadline:
+            result = await self._client.get_status()
+            if "error" not in result:
+                return True
+            await asyncio.sleep(0.5)
+        return False
+
     def _page_client_error(self):
         return jsonify({"success": False, "error": "SRA 适配器尚未初始化，请检查插件配置。"}), 500
+
+    def _page_process_error(self):
+        return jsonify({"success": False, "error": "SRA 进程管理器尚未初始化，请检查插件配置。"}), 500
 
     # -- Pages 后端 API ----------------------------------------------------------
 
     async def page_info(self):
         """管理页面基础信息。"""
+        process_status = self._process_manager.status() if self._process_manager else {}
         if self._client is None:
-            return jsonify({"success": False, "base_url": "", "plugin": PLUGIN_NAME})
-        return jsonify({"success": True, "base_url": self._client.base_url, "plugin": PLUGIN_NAME})
+            return jsonify({"success": False, "base_url": "", "plugin": PLUGIN_NAME, "process": process_status})
+        return jsonify({"success": True, "base_url": self._client.base_url, "plugin": PLUGIN_NAME, "process": process_status})
 
     async def page_status(self):
         """管理页面：获取 SRA 任务状态。"""
@@ -153,6 +196,28 @@ class SRAPlugin(Star):
         if self._client is None:
             return self._page_client_error()
         return jsonify(await self._client.stop_task())
+
+    async def page_server_status(self):
+        """管理页面：检查本地进程配置和 SRA HTTP Server 连通性。"""
+        if self._process_manager is None:
+            return self._page_process_error()
+        payload = self._process_manager.status()
+        if self._client is not None:
+            task_status = await self._client.get_status()
+            payload["server_reachable"] = "error" not in task_status
+            payload["task_running"] = bool(task_status.get("running", False))
+            if "error" in task_status:
+                payload["server_error"] = task_status["error"]
+        return jsonify(payload)
+
+    async def page_start_server(self):
+        """管理页面：启动配置好的本机 SRA 可执行文件。"""
+        if self._process_manager is None:
+            return self._page_process_error()
+        payload = self._process_manager.start()
+        if payload.get("success"):
+            payload["server_reachable"] = await self._wait_server_ready()
+        return jsonify(payload)
 
     async def page_logs(self):
         """管理页面：读取 SRA 最近日志。"""
@@ -211,6 +276,10 @@ class SRAPlugin(Star):
             " ↑ 停止当前任务",
             "/sra status",
             " ↑ 查看运行状态",
+            "/sra start-server",
+            " ↑ 启动本机配置好的SRA程序",
+            "/sra server-status",
+            " ↑ 查看SRA Server连通性",
             "/sra logs [数量]",
             " ↑ 获取最近日志,默认100条",
             "/sra configs",
@@ -285,6 +354,57 @@ class SRAPlugin(Star):
             yield event.plain_result("✅已发送停止信号")
         else:
             yield event.plain_result(f"⚠️{result.get('message', '未知错误')}")
+
+    # === /sra start-server ===
+
+    @sra.command("start-server")
+    async def cmd_start_server(self, event: AstrMessageEvent):
+        """启动配置好的本机 SRA 可执行文件。"""
+        if not self._check_whitelist(event):
+            return
+        manager, err = self._ensure_process_manager()
+        if manager is None:
+            yield event.plain_result(f"❌{err}" + SUPPORT_INFO)
+            return
+
+        result = manager.start()
+        if result.get("success"):
+            reachable = await self._wait_server_ready()
+            suffix = "，HTTP Server 已可连接" if reachable else "，但 HTTP Server 暂未连通"
+            yield event.plain_result(f"✅{result.get('message')}{suffix}")
+        else:
+            yield event.plain_result(f"❌{result.get('message', '启动失败')}" + SUPPORT_INFO)
+
+    # === /sra server-status ===
+
+    @sra.command("server-status")
+    async def cmd_server_status(self, event: AstrMessageEvent):
+        """查看 SRA Server 连通性和插件启动的本地进程状态。"""
+        if not self._check_whitelist(event):
+            return
+        manager, err = self._ensure_process_manager()
+        if manager is None:
+            yield event.plain_result(f"❌{err}" + SUPPORT_INFO)
+            return
+
+        process_status = manager.status()
+        client, client_err = await self._ensure_client(event)
+        if client is None:
+            yield event.plain_result(client_err)
+            return
+        task_status = await client.get_status()
+        reachable = "error" not in task_status
+        lines = [
+            "SRA Server 状态",
+            f"  HTTP连通: {'是' if reachable else '否'}",
+            f"  本机启动配置: {'已配置' if process_status.get('configured') else '未配置'}",
+            f"  插件启动进程: {'运行中' if process_status.get('process_running') else '未运行'}",
+        ]
+        if process_status.get("pid"):
+            lines.append(f"  PID: {process_status['pid']}")
+        if task_status.get("error"):
+            lines.append(f"  错误: {task_status['error']}")
+        yield event.plain_result("\n".join(lines))
 
     # === /sra status ===
 

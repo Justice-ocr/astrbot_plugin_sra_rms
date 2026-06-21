@@ -34,6 +34,31 @@
           <pre id="taskResult" class="result"></pre>
         </article>
 
+        <article class="panel server-panel">
+          <div class="panel-head">
+            <h2>Server 控制</h2>
+            <button id="refreshServerBtn" type="button">检查连接</button>
+          </div>
+          <dl class="server-state">
+            <div>
+              <dt>HTTP</dt>
+              <dd id="serverReachable">未知</dd>
+            </div>
+            <div>
+              <dt>本机进程</dt>
+              <dd id="localProcess">未知</dd>
+            </div>
+            <div>
+              <dt>启动路径</dt>
+              <dd id="serverPath">未配置</dd>
+            </div>
+          </dl>
+          <div class="actions">
+            <button id="startServerBtn" class="primary" type="button">启动 Server</button>
+          </div>
+          <pre id="serverResult" class="result"></pre>
+        </article>
+
         <article class="panel log-panel">
           <div class="panel-head">
             <h2>运行日志</h2>

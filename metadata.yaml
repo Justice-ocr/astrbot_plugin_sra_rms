@@ -3,7 +3,7 @@ display_name: SRA调度器
 desc: |
   用于调用崩铁辅助工具SRA(受限于SRA server提供的接口)。远程执行任务、查看状态与日志。
      ⭐本插件交流群:1098236107   ⭐SRA交流群:994571792
-version: v0.4.0
+version: v0.5.0
 author: MiaoR1Zibing
 repo: https://github.com/MiaoR1Zibing/astrbot_plugin_sra_rms
 astrbot_version: '>=4.16,<5'

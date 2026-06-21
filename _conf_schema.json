@@ -11,6 +11,30 @@
     "hint": "SRA前端Server的端口，默认 5073",
     "default": 5073
   },
+  "sra_executable_path": {
+    "description": "SRA 可执行文件路径",
+    "type": "string",
+    "hint": "用于 /sra start-server 启动本机 SRA。只允许填写已安装的 .exe 路径；留空则不启用启动功能。",
+    "default": ""
+  },
+  "sra_working_directory": {
+    "description": "SRA 工作目录",
+    "type": "string",
+    "hint": "启动 SRA 时使用的工作目录。留空时默认使用可执行文件所在目录。",
+    "default": ""
+  },
+  "start_timeout": {
+    "description": "启动等待秒数",
+    "type": "int",
+    "hint": "启动 SRA 后等待 HTTP Server 可连接的最长秒数，范围 0-60。",
+    "default": 8
+  },
+  "auto_start_server": {
+    "description": "插件初始化时自动启动 SRA",
+    "type": "bool",
+    "hint": "开启后插件初始化时会尝试启动配置好的本机 SRA 可执行文件。",
+    "default": false
+  },
   "enable_whitelist": {
     "description": "启用指令白名单",
     "type": "bool",

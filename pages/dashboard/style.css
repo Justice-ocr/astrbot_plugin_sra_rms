@@ -160,6 +160,44 @@ h2 {
   flex-wrap: wrap;
 }
 
+.server-state {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.server-state > div {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.server-state dt,
+.server-state dd {
+  margin: 0;
+}
+
+.server-state dt {
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.server-state dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.server-state dd[data-state="running"] {
+  color: var(--running);
+  font-weight: 650;
+}
+
+.server-state dd[data-state="error"] {
+  color: var(--error);
+  font-weight: 650;
+}
+
 .field {
   display: grid;
   gap: 6px;
