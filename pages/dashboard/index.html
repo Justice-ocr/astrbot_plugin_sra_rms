@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SRA Remote Manager</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <h1>SRA Remote Manager</h1>
+          <p id="serverInfo">正在连接...</p>
+        </div>
+        <div class="status-pill" id="statusPill">未知</div>
+      </section>
+
+      <section class="grid">
+        <article class="panel control-panel">
+          <div class="panel-head">
+            <h2>任务控制</h2>
+            <button id="refreshStatusBtn" type="button">刷新状态</button>
+          </div>
+          <label class="field">
+            <span>运行配置</span>
+            <select id="configSelect"></select>
+          </label>
+          <div class="actions">
+            <button id="runBtn" class="primary" type="button">启动任务</button>
+            <button id="runAllBtn" type="button">运行全部</button>
+            <button id="stopBtn" class="danger" type="button">停止任务</button>
+          </div>
+          <pre id="taskResult" class="result"></pre>
+        </article>
+
+        <article class="panel log-panel">
+          <div class="panel-head">
+            <h2>运行日志</h2>
+            <div class="inline-controls">
+              <input id="logCount" type="number" min="1" max="500" value="100" />
+              <button id="refreshLogsBtn" type="button">刷新日志</button>
+            </div>
+          </div>
+          <pre id="logsOutput" class="logs"></pre>
+        </article>
+
+        <article class="panel config-panel">
+          <div class="panel-head">
+            <h2>配置编辑</h2>
+            <div class="inline-controls">
+              <button id="reloadConfigBtn" type="button">读取配置</button>
+              <button id="saveConfigBtn" class="primary" type="button">保存配置</button>
+            </div>
+          </div>
+          <label class="field">
+            <span>当前配置名</span>
+            <input id="configName" type="text" autocomplete="off" />
+          </label>
+          <textarea id="configEditor" spellcheck="false" placeholder="选择配置后会在这里显示 JSON"></textarea>
+          <pre id="configResult" class="result"></pre>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

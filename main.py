@@ -8,6 +8,7 @@ from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
+from quart import jsonify, request
 
 from .activity_logger import ActivityLogger
 from .sra_client import SRAClient
@@ -29,6 +30,14 @@ class SRAPlugin(Star):
         self.config = config
         self._client: SRAClient | None = None
         self._activity: ActivityLogger | None = None
+        context.register_web_api(f"/{PLUGIN_NAME}/info", self.page_info, ["GET"], "SRA RMS info")
+        context.register_web_api(f"/{PLUGIN_NAME}/status", self.page_status, ["GET"], "SRA task status")
+        context.register_web_api(f"/{PLUGIN_NAME}/run", self.page_run, ["POST"], "Run SRA task")
+        context.register_web_api(f"/{PLUGIN_NAME}/stop", self.page_stop, ["POST"], "Stop SRA task")
+        context.register_web_api(f"/{PLUGIN_NAME}/logs", self.page_logs, ["GET"], "SRA recent logs")
+        context.register_web_api(f"/{PLUGIN_NAME}/configs", self.page_configs, ["GET"], "List SRA configs")
+        context.register_web_api(f"/{PLUGIN_NAME}/config", self.page_get_config, ["GET"], "Get SRA config")
+        context.register_web_api(f"/{PLUGIN_NAME}/config", self.page_update_config, ["POST"], "Update SRA config")
 
     # -- 生命周期 ----------------------------------------------------------------
 
@@ -41,7 +50,7 @@ class SRAPlugin(Star):
         self._activity.log("lifecycle", "插件初始化", "ok")
 
         host = self.config.get("sra_host", "localhost")
-        port = self.config.get("sra_port", 5000)
+        port = self.config.get("sra_port", 5073)
         self._client = SRAClient(host=host, port=port, activity=self._activity)
 
         wl_on = self.config.get("enable_whitelist", False)
@@ -113,6 +122,70 @@ class SRAPlugin(Star):
         if self._client is None:
             return None, "❌SRA适配器尚未初始化,请检查插件配置。" + SUPPORT_INFO
         return self._client, None
+
+    def _page_client_error(self):
+        return jsonify({"success": False, "error": "SRA 适配器尚未初始化，请检查插件配置。"}), 500
+
+    # -- Pages 后端 API ----------------------------------------------------------
+
+    async def page_info(self):
+        """管理页面基础信息。"""
+        if self._client is None:
+            return jsonify({"success": False, "base_url": "", "plugin": PLUGIN_NAME})
+        return jsonify({"success": True, "base_url": self._client.base_url, "plugin": PLUGIN_NAME})
+
+    async def page_status(self):
+        """管理页面：获取 SRA 任务状态。"""
+        if self._client is None:
+            return self._page_client_error()
+        return jsonify(await self._client.get_status())
+
+    async def page_run(self):
+        """管理页面：启动 SRA 任务。空配置名表示运行全部配置。"""
+        if self._client is None:
+            return self._page_client_error()
+        body = await request.get_json(silent=True) or {}
+        config_name = str(body.get("configName", "")).strip()
+        return jsonify(await self._client.run_task(config_name))
+
+    async def page_stop(self):
+        """管理页面：停止当前 SRA 任务。"""
+        if self._client is None:
+            return self._page_client_error()
+        return jsonify(await self._client.stop_task())
+
+    async def page_logs(self):
+        """管理页面：读取 SRA 最近日志。"""
+        if self._client is None:
+            return self._page_client_error()
+        raw_count = request.args.get("count", "100")
+        try:
+            count = max(1, min(int(raw_count), 500))
+        except ValueError:
+            count = 100
+        return jsonify(await self._client.get_logs(count))
+
+    async def page_configs(self):
+        """管理页面：读取配置列表。"""
+        if self._client is None:
+            return self._page_client_error()
+        return jsonify(await self._client.list_configs())
+
+    async def page_get_config(self):
+        """管理页面：读取单个配置。"""
+        if self._client is None:
+            return self._page_client_error()
+        config_name = str(request.args.get("name", "")).strip()
+        return jsonify(await self._client.get_config(config_name))
+
+    async def page_update_config(self):
+        """管理页面：保存单个配置。"""
+        if self._client is None:
+            return self._page_client_error()
+        body = await request.get_json(silent=True) or {}
+        config_name = str(body.get("name", "")).strip()
+        config_payload = body.get("config")
+        return jsonify(await self._client.update_config(config_name, config_payload))
 
     # -- 指令组 ----------------------------------------------------------------
 

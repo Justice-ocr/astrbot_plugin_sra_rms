@@ -8,8 +8,8 @@
   "sra_port": {
     "description": "SRA Server 端口",
     "type": "int",
-    "hint": "SRA前端Server的端口，默认 5000",
-    "default": 5000
+    "hint": "SRA前端Server的端口，默认 5073",
+    "default": 5073
   },
   "enable_whitelist": {
     "description": "启用指令白名单",

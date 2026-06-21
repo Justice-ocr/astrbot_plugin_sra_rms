@@ -6,10 +6,12 @@
   GET  /Task/status  - 获取任务状态
   GET  /Task/logs    - 获取最近日志
   GET  /Configs      - 获取所有配置名称列表
+  GET  /Configs/{name} - 获取指定配置
+  PUT  /Configs/{name} - 更新指定配置
 """
 
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
@@ -19,12 +21,16 @@ from .activity_logger import ActivityLogger
 class SRAClient:
     """异步 HTTP 客户端，封装 SRA Server 的 TaskController 接口。"""
 
-    def __init__(self, host: str = "localhost", port: int = 5000, activity: Optional[ActivityLogger] = None):
+    def __init__(self, host: str = "localhost", port: int = 5073, activity: Optional[ActivityLogger] = None):
         self._base = f"http://{host}:{port}"
         self._activity = activity
 
     def _url(self, path: str) -> str:
         return f"{self._base}{path}"
+
+    @property
+    def base_url(self) -> str:
+        return self._base
 
     def _log_activity(self, category: str, desc: str, result: str, elapsed: float, detail: Optional[str] = None):
         """统一记录原子行为，仅在此层记录一次，避免与 main.py 重复。"""
@@ -234,3 +240,58 @@ class SRAClient:
 
         self._log_activity("sra_api", "GET /Configs", "ok", elapsed, f"返回 {len(configs)} 个")
         return {"configs": configs}
+
+    async def get_config(self, config_name: str) -> dict:
+        """获取指定 SRA 配置。"""
+        t0 = time.perf_counter()
+        safe_name = config_name.strip()
+        if not safe_name:
+            return {"config": None, "error": "配置名不能为空"}
+
+        url = self._url(f"/Configs/{safe_name}")
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(url)
+                raw, err = self._parse_json(resp)
+        except Exception as e:
+            elapsed = (time.perf_counter() - t0) * 1000
+            self._log_activity("sra_api", f"GET /Configs/{safe_name}", "fail", elapsed, str(e))
+            return {"config": None, "error": str(e)}
+
+        elapsed = (time.perf_counter() - t0) * 1000
+        if err:
+            self._log_activity("sra_api", f"GET /Configs/{safe_name}", "fail", elapsed, err)
+            return {"config": None, "error": err}
+
+        self._log_activity("sra_api", f"GET /Configs/{safe_name}", "ok", elapsed, f"HTTP {resp.status_code}")
+        return {"config": raw}
+
+    async def update_config(self, config_name: str, config: dict[str, Any]) -> dict:
+        """更新指定 SRA 配置。"""
+        t0 = time.perf_counter()
+        safe_name = config_name.strip()
+        if not safe_name:
+            return {"success": False, "message": "配置名不能为空"}
+        if not isinstance(config, dict):
+            return {"success": False, "message": "配置内容必须是 JSON 对象"}
+
+        url = self._url(f"/Configs/{safe_name}")
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.put(url, json=config)
+                if resp.status_code >= 400:
+                    err = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                else:
+                    err = None
+        except Exception as e:
+            elapsed = (time.perf_counter() - t0) * 1000
+            self._log_activity("sra_api", f"PUT /Configs/{safe_name}", "fail", elapsed, str(e))
+            return {"success": False, "message": f"请求失败: {e}"}
+
+        elapsed = (time.perf_counter() - t0) * 1000
+        if err:
+            self._log_activity("sra_api", f"PUT /Configs/{safe_name}", "fail", elapsed, err)
+            return {"success": False, "message": err}
+
+        self._log_activity("sra_api", f"PUT /Configs/{safe_name}", "ok", elapsed, f"HTTP {resp.status_code}")
+        return {"success": True, "message": "配置已保存"}
