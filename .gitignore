@@ -174,5 +174,6 @@ __marimo__/
 # WebUI build outputs
 webui-backend/bin/
 webui-backend/obj/
+webui-backend/publish/
 webui-frontend/node_modules/
 webui-frontend/dist/
